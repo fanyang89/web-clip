@@ -5,15 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 )
 
-var url string
 var output string
-var htmlFile string
 var dpi int
 
 func enableLifeCycleEvents() chromedp.ActionFunc {
@@ -109,6 +108,15 @@ func readHTMLFile(filePath string) (string, error) {
 		return "", err
 	}
 	return string(content), nil
+}
+
+func isURL(input string) bool {
+	return strings.HasPrefix(input, "http://") || strings.HasPrefix(input, "https://")
+}
+
+func isFile(input string) bool {
+	_, err := os.Stat(input)
+	return err == nil
 }
 
 func main() {
