@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 )
@@ -13,6 +14,7 @@ import (
 var url string
 var output string
 var htmlFile string
+var dpi int
 
 func enableLifeCycleEvents() chromedp.ActionFunc {
 	return func(ctx context.Context) error {
@@ -25,6 +27,13 @@ func enableLifeCycleEvents() chromedp.ActionFunc {
 			return err
 		}
 		return nil
+	}
+}
+
+func setDeviceScaleFactor(scaleFactor float64) chromedp.ActionFunc {
+	return func(ctx context.Context) error {
+		err := emulation.SetDeviceMetricsOverride(0, 0, scaleFactor, false).Do(ctx)
+		return err
 	}
 }
 
@@ -59,17 +68,21 @@ func navigateAndWaitFor(url string, eventName string) chromedp.ActionFunc {
 	}
 }
 
-func fullScreenshot(urlStr string, quality int, res *[]byte) chromedp.Tasks {
+func fullScreenshot(urlStr string, quality int, dpi int, res *[]byte) chromedp.Tasks {
+	scaleFactor := float64(dpi) / 96.0 // Convert DPI to scale factor (96 DPI = 1.0)
 	return chromedp.Tasks{
 		enableLifeCycleEvents(),
+		setDeviceScaleFactor(scaleFactor),
 		navigateAndWaitFor(urlStr, "networkIdle"),
 		chromedp.FullScreenshot(res, quality),
 	}
 }
 
-func htmlScreenshot(htmlContent string, quality int, res *[]byte) chromedp.Tasks {
+func htmlScreenshot(htmlContent string, quality int, dpi int, res *[]byte) chromedp.Tasks {
+	scaleFactor := float64(dpi) / 96.0 // Convert DPI to scale factor (96 DPI = 1.0)
 	return chromedp.Tasks{
 		enableLifeCycleEvents(),
+		setDeviceScaleFactor(scaleFactor),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			// Load HTML content
 			err := chromedp.Navigate("about:blank").Do(ctx)
@@ -102,6 +115,7 @@ func main() {
 	flag.StringVar(&url, "url", "", "URL")
 	flag.StringVar(&output, "output", "", "Output file path")
 	flag.StringVar(&htmlFile, "html", "", "Local HTML file path")
+	flag.IntVar(&dpi, "dpi", 200, "DPI for screenshot (default: 200)")
 	flag.Parse()
 
 	if output == "" {
@@ -128,14 +142,14 @@ func main() {
 
 	if url != "" {
 		// Take screenshot from URL
-		err = chromedp.Run(ctx, fullScreenshot(url, 90, &buf))
+		err = chromedp.Run(ctx, fullScreenshot(url, 90, dpi, &buf))
 	} else {
 		// Take screenshot from local HTML file
 		htmlContent, err := readHTMLFile(htmlFile)
 		if err != nil {
 			panic(err)
 		}
-		err = chromedp.Run(ctx, htmlScreenshot(htmlContent, 90, &buf))
+		err = chromedp.Run(ctx, htmlScreenshot(htmlContent, 90, dpi, &buf))
 	}
 
 	if err != nil {
