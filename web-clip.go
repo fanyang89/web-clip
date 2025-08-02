@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/chromedp/cdproto/emulation"
@@ -121,6 +122,62 @@ func isFile(input string) bool {
 	return err == nil
 }
 
+// getPageTitle retrieves the page title, prioritizing the title tag, falling back to h1 tag if needed
+func getPageTitle(ctx context.Context, url string) (string, error) {
+	var title string
+	
+	// First try to get the title tag
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(url),
+		chromedp.WaitReady("body"),
+		chromedp.Title(&title),
+	)
+	
+	if err != nil {
+		return "", err
+	}
+	
+	// If title is empty or just a default value, try to get h1 tag
+	if title == "" || title == "Document" {
+		var h1Text string
+		err = chromedp.Run(ctx,
+			chromedp.Text("h1", &h1Text, chromedp.ByQuery),
+		)
+		if err == nil && h1Text != "" {
+			title = h1Text
+		}
+	}
+	
+	return title, nil
+}
+
+// sanitizeFilename converts a string to a safe filename
+func sanitizeFilename(filename string) string {
+	if filename == "" {
+		return "screenshot"
+	}
+	
+	// Remove or replace unsafe characters
+	re := regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f]`)
+	filename = re.ReplaceAllString(filename, "_")
+	
+	// Remove extra spaces and dots
+	filename = strings.TrimSpace(filename)
+	filename = strings.Trim(filename, ".")
+	
+	// Limit length
+	if len(filename) > 100 {
+		filename = filename[:100]
+	}
+	
+	// If empty after processing, use default name
+	if filename == "" {
+		return "screenshot"
+	}
+	
+	return filename
+}
+
 func main() {
 	flag.StringVar(&output, "output", "", "Output file path")
 	flag.IntVar(&dpi, "dpi", 200, "DPI for screenshot (default: 200)")
@@ -139,18 +196,27 @@ func main() {
 		return
 	}
 
+	ctx, cancel := chromedp.NewContext(context.Background())
+	defer cancel()
+
 	if output == "" {
 		if isFile(input) {
 			dir := filepath.Dir(input)
 			baseName := strings.TrimSuffix(filepath.Base(input), filepath.Ext(input))
 			output = filepath.Join(dir, baseName+".png")
 		} else {
-			output = "screenshot.png"
+			// For URLs, try to get page title to generate filename
+			title, err := getPageTitle(ctx, input)
+			if err != nil {
+				// If getting title fails, use default name
+				output = "screenshot.png"
+			} else {
+				// Use page title to generate safe filename
+				safeFilename := sanitizeFilename(title)
+				output = safeFilename + ".png"
+			}
 		}
 	}
-
-	ctx, cancel := chromedp.NewContext(context.Background())
-	defer cancel()
 
 	var buf []byte
 	var err error
