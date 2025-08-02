@@ -12,6 +12,7 @@ import (
 
 var url string
 var output string
+var htmlFile string
 
 func enableLifeCycleEvents() chromedp.ActionFunc {
 	return func(ctx context.Context) error {
@@ -49,7 +50,7 @@ func waitFor(ctx context.Context, eventName string) error {
 
 func navigateAndWaitFor(url string, eventName string) chromedp.ActionFunc {
 	return func(ctx context.Context) error {
-		_, _, _, err := page.Navigate(url).Do(ctx)
+		_, _, _, _, err := page.Navigate(url).Do(ctx)
 		if err != nil {
 			return err
 		}
@@ -66,13 +67,56 @@ func fullScreenshot(urlStr string, quality int, res *[]byte) chromedp.Tasks {
 	}
 }
 
+func htmlScreenshot(htmlContent string, quality int, res *[]byte) chromedp.Tasks {
+	return chromedp.Tasks{
+		enableLifeCycleEvents(),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			// Load HTML content
+			err := chromedp.Navigate("about:blank").Do(ctx)
+			if err != nil {
+				return err
+			}
+			
+			// Set the HTML content
+			err = chromedp.Evaluate(`document.documentElement.innerHTML = ` + "`" + htmlContent + "`", nil).Do(ctx)
+			if err != nil {
+				return err
+			}
+			
+			// Wait for the page to be ready
+			return waitFor(ctx, "networkIdle")
+		}),
+		chromedp.FullScreenshot(res, quality),
+	}
+}
+
+func readHTMLFile(filePath string) (string, error) {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", err
+	}
+	return string(content), nil
+}
+
 func main() {
 	flag.StringVar(&url, "url", "", "URL")
 	flag.StringVar(&output, "output", "", "Output file path")
+	flag.StringVar(&htmlFile, "html", "", "Local HTML file path")
 	flag.Parse()
 
-	if url == "" || output == "" {
-		fmt.Printf("Usage: %s -url <URL> -output <OUTPUT>\n", os.Args[0])
+	if output == "" {
+		fmt.Printf("Usage: %s [-url <URL> | -html <HTML_FILE>] -output <OUTPUT>\n", os.Args[0])
+		return
+	}
+
+	if url == "" && htmlFile == "" {
+		fmt.Printf("Error: Either -url or -html must be specified\n")
+		fmt.Printf("Usage: %s [-url <URL> | -html <HTML_FILE>] -output <OUTPUT>\n", os.Args[0])
+		return
+	}
+
+	if url != "" && htmlFile != "" {
+		fmt.Printf("Error: Cannot specify both -url and -html\n")
 		return
 	}
 
@@ -80,7 +124,20 @@ func main() {
 	defer cancel()
 
 	var buf []byte
-	err := chromedp.Run(ctx, fullScreenshot(url, 90, &buf))
+	var err error
+
+	if url != "" {
+		// Take screenshot from URL
+		err = chromedp.Run(ctx, fullScreenshot(url, 90, &buf))
+	} else {
+		// Take screenshot from local HTML file
+		htmlContent, err := readHTMLFile(htmlFile)
+		if err != nil {
+			panic(err)
+		}
+		err = chromedp.Run(ctx, htmlScreenshot(htmlContent, 90, &buf))
+	}
+
 	if err != nil {
 		panic(err)
 	}
