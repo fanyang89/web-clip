@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/chromedp/cdproto/emulation"
@@ -125,14 +126,9 @@ func main() {
 	flag.IntVar(&dpi, "dpi", 200, "DPI for screenshot (default: 200)")
 	flag.Parse()
 
-	if output == "" {
-		fmt.Printf("Usage: %s <URL_OR_HTML_FILE> -output <OUTPUT>\n", os.Args[0])
-		return
-	}
-
 	if flag.NArg() != 1 {
 		fmt.Printf("Error: Exactly one input argument (URL or HTML file path) is required\n")
-		fmt.Printf("Usage: %s <URL_OR_HTML_FILE> -output <OUTPUT>\n", os.Args[0])
+		fmt.Printf("Usage: %s <URL_OR_HTML_FILE> [-output <OUTPUT>]\n", os.Args[0])
 		return
 	}
 
@@ -141,6 +137,16 @@ func main() {
 	if !isURL(input) && !isFile(input) {
 		fmt.Printf("Error: Input must be a valid URL (http:// or https://) or an existing HTML file path\n")
 		return
+	}
+
+	if output == "" {
+		if isFile(input) {
+			dir := filepath.Dir(input)
+			baseName := strings.TrimSuffix(filepath.Base(input), filepath.Ext(input))
+			output = filepath.Join(dir, baseName+".png")
+		} else {
+			output = "screenshot.png"
+		}
 	}
 
 	ctx, cancel := chromedp.NewContext(context.Background())
