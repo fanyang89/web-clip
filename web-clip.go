@@ -14,6 +14,7 @@ import (
 
 var output string
 var dpi int
+var input string
 
 func enableLifeCycleEvents() chromedp.ActionFunc {
 	return func(ctx context.Context) error {
@@ -88,13 +89,13 @@ func htmlScreenshot(htmlContent string, quality int, dpi int, res *[]byte) chrom
 			if err != nil {
 				return err
 			}
-			
+
 			// Set the HTML content
-			err = chromedp.Evaluate(`document.documentElement.innerHTML = ` + "`" + htmlContent + "`", nil).Do(ctx)
+			err = chromedp.Evaluate(`document.documentElement.innerHTML = `+"`"+htmlContent+"`", nil).Do(ctx)
 			if err != nil {
 				return err
 			}
-			
+
 			// Wait for the page to be ready
 			return waitFor(ctx, "networkIdle")
 		}),
@@ -120,25 +121,25 @@ func isFile(input string) bool {
 }
 
 func main() {
-	flag.StringVar(&url, "url", "", "URL")
 	flag.StringVar(&output, "output", "", "Output file path")
-	flag.StringVar(&htmlFile, "html", "", "Local HTML file path")
 	flag.IntVar(&dpi, "dpi", 200, "DPI for screenshot (default: 200)")
 	flag.Parse()
 
 	if output == "" {
-		fmt.Printf("Usage: %s [-url <URL> | -html <HTML_FILE>] -output <OUTPUT>\n", os.Args[0])
+		fmt.Printf("Usage: %s <URL_OR_HTML_FILE> -output <OUTPUT>\n", os.Args[0])
 		return
 	}
 
-	if url == "" && htmlFile == "" {
-		fmt.Printf("Error: Either -url or -html must be specified\n")
-		fmt.Printf("Usage: %s [-url <URL> | -html <HTML_FILE>] -output <OUTPUT>\n", os.Args[0])
+	if flag.NArg() != 1 {
+		fmt.Printf("Error: Exactly one input argument (URL or HTML file path) is required\n")
+		fmt.Printf("Usage: %s <URL_OR_HTML_FILE> -output <OUTPUT>\n", os.Args[0])
 		return
 	}
 
-	if url != "" && htmlFile != "" {
-		fmt.Printf("Error: Cannot specify both -url and -html\n")
+	input = flag.Arg(0)
+
+	if !isURL(input) && !isFile(input) {
+		fmt.Printf("Error: Input must be a valid URL (http:// or https://) or an existing HTML file path\n")
 		return
 	}
 
@@ -148,12 +149,12 @@ func main() {
 	var buf []byte
 	var err error
 
-	if url != "" {
-		// Take screenshot from URL
-		err = chromedp.Run(ctx, fullScreenshot(url, 90, dpi, &buf))
+	if isURL(input) {
+		// Take a screenshot from URL
+		err = chromedp.Run(ctx, fullScreenshot(input, 90, dpi, &buf))
 	} else {
-		// Take screenshot from local HTML file
-		htmlContent, err := readHTMLFile(htmlFile)
+		// Take a screenshot from local HTML file
+		htmlContent, err := readHTMLFile(input)
 		if err != nil {
 			panic(err)
 		}
